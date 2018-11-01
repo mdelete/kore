@@ -426,10 +426,20 @@ kore_pgsql_fieldname(struct kore_pgsql *pgsql, int field)
 	return (PQfname(pgsql->result, field));
 }
 
+unsigned
+kore_pgsql_fieldtype(struct kore_pgsql *pgsql, int field)
+{
+	return ((unsigned)PQftype(pgsql->result, field));
+}
+
 char *
 kore_pgsql_getvalue(struct kore_pgsql *pgsql, int row, int col)
 {
-	return (PQgetvalue(pgsql->result, row, col));
+	if (PQgetisnull(pgsql->result, row, col) == 1) {
+		return NULL;
+	} else {
+		return (PQgetvalue(pgsql->result, row, col));
+	}
 }
 
 static struct pgsql_conn *

@@ -32,7 +32,7 @@ int
 init(int state)
 {
 	/* Register our database. */
-	kore_pgsql_register("db", "host=/tmp dbname=test");
+	kore_pgsql_register("db", "host=localhost dbname=delete");
 
 	return (KORE_RESULT_OK);
 }

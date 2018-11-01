@@ -4,6 +4,7 @@ kore
 *.swo
 *.module
 *.DSYM
+*.pem
 cert
 obj
 .lvimrc

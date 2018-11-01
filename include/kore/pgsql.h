@@ -91,6 +91,7 @@ int	kore_pgsql_ntuples(struct kore_pgsql *);
 int	kore_pgsql_nfields(struct kore_pgsql *);
 void	kore_pgsql_logerror(struct kore_pgsql *);
 char	*kore_pgsql_fieldname(struct kore_pgsql *, int);
+unsigned kore_pgsql_fieldtype(struct kore_pgsql *, int);
 char	*kore_pgsql_getvalue(struct kore_pgsql *, int, int);
 int	kore_pgsql_getlength(struct kore_pgsql *, int, int);
 

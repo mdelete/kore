@@ -70,7 +70,7 @@ db_init(struct connection *c, struct kore_pgsql *pgsql)
 	}
 
 	printf("\tgot pgsql connection\n");
-	if (!kore_pgsql_query(pgsql, "SELECT * FROM coders, pg_sleep(5)")) {
+	if (!kore_pgsql_query(pgsql, "SELECT * FROM kunden")) {
 		kore_pgsql_logerror(pgsql);
 		kore_connection_disconnect(c);
 		return;

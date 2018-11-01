@@ -36,6 +36,8 @@
 #include <kore/http.h>
 #include <kore/pgsql.h>
 
+//#include "src/type-oid.h"
+
 #define REQ_STATE_INIT			0
 #define REQ_STATE_QUERY			1
 #define REQ_STATE_DB_WAIT		2
@@ -43,7 +45,7 @@
 #define REQ_STATE_ERROR			4
 #define REQ_STATE_DONE			5
 
-int		page(struct http_request *);
+int page(struct http_request *);
 
 static int	request_perform_init(struct http_request *);
 static int	request_perform_query(struct http_request *);
@@ -64,8 +66,9 @@ struct http_state	mystates[] = {
 #define mystates_size		(sizeof(mystates) / sizeof(mystates[0]))
 
 struct rstate {
-	int			cnt;
-	struct kore_pgsql	sql;
+	int                cnt;
+	struct kore_pgsql  sql;
+	struct kore_buf*   buffer;
 };
 
 /* Page handler entry point (see config) */
@@ -93,6 +96,7 @@ request_perform_init(struct http_request *req)
 		 * by the pgsql layer when required.
 		 */
 		kore_pgsql_init(&state->sql);
+		state->buffer = kore_buf_alloc(128);
 		kore_pgsql_bind_request(&state->sql, req);
 	} else {
 		state = http_state_get(req);
@@ -135,8 +139,8 @@ request_perform_query(struct http_request *req)
 	req->fsm_state = REQ_STATE_DB_WAIT;
 
 	/* Fire off the query. */
-	if (!kore_pgsql_query(&state->sql,
-	    "SELECT * FROM coders, pg_sleep(5)")) {
+	//if (!kore_pgsql_query(&state->sql, "SELECT * FROM kunden")) {
+	if (!kore_pgsql_query_params(&state->sql, "SELECT * FROM plain_old_excel_sheet WHERE periode = $1::INT", 0, 1, "201809", 6, 0)) {
 		/*
 		 * Let the state machine continue immediately since we
 		 * have an error anyway.
@@ -194,16 +198,57 @@ request_db_wait(struct http_request *req)
 int
 request_db_read(struct http_request *req)
 {
-	char		*name;
-	int		i, rows;
+	unsigned type;
+	char *key, *value;
+	int i, j, rows, cols;
 	struct rstate	*state = http_state_get(req);
 
 	/* We have sql data to read! */
 	rows = kore_pgsql_ntuples(&state->sql);
+	cols = kore_pgsql_nfields(&state->sql);
+	
+	kore_buf_append(state->buffer, "[", 1);
+		
 	for (i = 0; i < rows; i++) {
-		name = kore_pgsql_getvalue(&state->sql, i, 0);
-		kore_log(LOG_NOTICE, "name: '%s'", name);
+		
+		if (i != 0)
+			kore_buf_append(state->buffer, ", {", 3);
+		else
+			kore_buf_append(state->buffer, "{", 1);
+					
+		for (j = 0; j < cols; j++) {
+			
+			if (j != 0)
+				kore_buf_append(state->buffer, ", ", 2);
+			
+			type = kore_pgsql_fieldtype(&state->sql, j);
+			
+			key = kore_pgsql_fieldname(&state->sql, j);
+			kore_buf_appendf(state->buffer, "\"%s\": ", key);
+			
+			value = kore_pgsql_getvalue(&state->sql, i, j);
+			if (value) {
+				if (type == 16) { // bool
+					if (value[0] == 'f') {
+						kore_buf_append(state->buffer, "false", 5);
+					} else {
+						kore_buf_append(state->buffer, "true", 4);
+					}
+				} else if (type == 20 || type == 21 || type == 23 || type == 1700 || type == 700 || type == 701 || type == 3802) {
+					kore_buf_appendf(state->buffer, "%s", value);
+				} else {	
+					kore_buf_appendf(state->buffer, "\"%s\"", value);
+					//kore_log(LOG_NOTICE, "typeof %s: %d", key, type);
+				}
+			} else {
+				kore_buf_append(state->buffer, "null", 4);
+			}
+		}
+		
+		kore_buf_append(state->buffer, "}", 1);
 	}
+	
+	kore_buf_append(state->buffer, "]", 1);
 
 	/* Continue processing our query results. */
 	kore_pgsql_continue(&state->sql);
@@ -220,6 +265,7 @@ request_error(struct http_request *req)
 	struct rstate	*state = http_state_get(req);
 
 	kore_pgsql_cleanup(&state->sql);
+	kore_buf_free(state->buffer);
 	http_state_cleanup(req);
 
 	http_response(req, 500, NULL, 0);
@@ -233,10 +279,16 @@ request_done(struct http_request *req)
 {
 	struct rstate	*state = http_state_get(req);
 
+	size_t length;
+	char *buf = kore_buf_stringify(state->buffer, &length);
+
 	kore_pgsql_cleanup(&state->sql);
 	http_state_cleanup(req);
 
-	http_response(req, 200, NULL, 0);
+	//http_response_stream(req, 200, void *base, size_t length, int (*cb)(struct netbuf *), void *arg)
+	
+	http_response(req, 200, buf, length);
+	kore_buf_free(state->buffer);
 
 	return (HTTP_STATE_COMPLETE);
 }
